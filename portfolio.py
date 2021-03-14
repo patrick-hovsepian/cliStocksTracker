@@ -234,11 +234,11 @@ class Portfolio(metaclass=utils.Singleton):
     def market_sync(self, args, stock_list = ()):
         # TODO: better error handling
         if (not stock_list):
-            print("No tickers supplied - default to existing entries")
+            #print("No tickers supplied - default to existing entries")
             stock_list = list(self.stocks.keys())
 
         # download all stock data
-        print(Fore.GREEN, end="")
+        print(Fore.LIGHTBLACK_EX, end="")
         market_data = self._download_market_data(args, stock_list)
         print(Style.RESET_ALL)
 

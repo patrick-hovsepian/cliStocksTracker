@@ -54,6 +54,7 @@ _portfolio_column_formatters = {
     "Total Share Cost": ColumnFormatter("Cost", 12, lambda entry: CellData(format_number(entry.cost_basis))),
 }
 
+# require portfolio passed in
 class Renderer(metaclass=utils.Singleton):
     def __init__(self, rounding: str, portfolio: portfolio.Portfolio, *args, **kwargs):
         self.mode = rounding
