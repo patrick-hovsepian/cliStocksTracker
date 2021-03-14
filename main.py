@@ -10,6 +10,7 @@ import portfolio as port
 
 from colorama import Fore, Style
 from ui.renderer import Renderer
+from ui.commander import Commander
 
 
 def merge_config(config, args):
@@ -43,6 +44,10 @@ def main():
     # merge options from cli and config
     verify_stock_keys(stocks_config)
     merge_config(config, args)
+
+
+    # cmd_runner = Commander()
+    # cmd_runner.prompt_and_handle_command()
 
     # populate portfolio
     portfolio = port.Portfolio()

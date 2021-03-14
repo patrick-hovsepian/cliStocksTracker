@@ -12,33 +12,54 @@ from typing import List, Callable
 # give each command it's own arg parser?
 @dataclass
 class CommandType(Enum):
-    NONE = auto()
-    PRINT_PORTFOLIO_SUMMARY = auto()
-    PRINT_PORTFOLIO_GRAPH = auto()
-    LIVE_TICKERS = auto()
+    NONE = ""
+    PRINT_PORTFOLIO_SUMMARY = "print_port"
+    PRINT_PORTFOLIO_GRAPH = "print_graph"
+    LIVE_TICKERS = "live_ticker"
+    EXIT = "exit"
+
+@dataclass
+class CommandParser:
+    parsers = {}
+
+    def __post_init__(self):
+        self.parsers[CommandType.NONE.value] = None
+        self.parsers[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = self._generate_portfolio_summary_parser()
+
+    def _generate_portfolio_summary_parser(self):
+        parser = argparse.ArgumentParser(description="Options for print portfolio")
+        parser.add_argument(
+            "--width",
+            type=int,
+            help="integer for the width of the chart (default is 80)",
+            default=80,
+        )
+        return parser
+
+    def parse_command(self, raw_cmd: str) -> argparse.Namespace:
+        argument_list = shlex.split(raw_cmd)
+        
+        # first argument should be the actual command
+        cmd = argument_list[0]
+        if (cmd not in self.parsers):
+            print(f'{Fore.RED} Invalid command {cmd} specified')
+            return
+
+        # remove the command part to supply true args to parser
+        argument_list = argument_list[1:]
+        parser = self.parsers.get(ctype.value)
+
+        # also return command type
+        args = parser.parse_args(argument_list)
+        return args
 
 @dataclass
 class Commander:
+    master_parser = CommandParser()
     curr_command = CommandType.NONE
 
-"""
-import argparse
-from ConfigParser import ConfigParser
-import shlex
+    def prompt_and_handle_command(self):
+        print(Fore.CYAN + "Please input a command: ", end="")
 
-parser = argparse.ArgumentParser(description='Short sample app')
-
-parser.add_argument('-a', action="store_true", default=False)
-parser.add_argument('-b', action="store", dest="b")
-parser.add_argument('-c', action="store", dest="c", type=int)
-
-config = ConfigParser()
-config.read('argparse_witH_shlex.ini')
-config_value = config.get('cli', 'options')
-print 'Config  :', config_value
-
-argument_list = shlex.split(config_value)
-print 'Arg List:', argument_list
-
-print 'Results :', parser.parse_args(argument_list)
-"""
+        raw_cmd = str(input())
+        args = self.master_parser.parse_command(raw_cmd)
