@@ -46,8 +46,8 @@ def main():
     merge_config(config, args)
 
 
-    # cmd_runner = Commander()
-    # cmd_runner.prompt_and_handle_command()
+    cmd_runner = Commander()
+    cmd_runner.prompt_and_handle_command()
 
     # populate portfolio
     portfolio = port.Portfolio()
