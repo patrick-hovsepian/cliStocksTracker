@@ -45,28 +45,14 @@ def main():
     verify_stock_keys(stocks_config)
     merge_config(config, args)
 
-    """
-    cmd_runner = Commander()
-    cmd_runner.prompt_and_handle_command()
-
     # populate portfolio
     portfolio = port.Portfolio()
     portfolio.load_from_config(stocks_config)
-    portfolio.market_sync(args)
 
-    # print to the screen
-    render_engine = Renderer(args.rounding_mode, portfolio)
-    render_engine.render()
-    """    
-
-    # populate portfolio
-    portfolio = port.Portfolio()
-    portfolio.load_from_config(stocks_config)
-    portfolio.market_sync(args)
-
-    # print to the screen
+    # generate render engine
     render_engine = Renderer(args.rounding_mode, portfolio)
 
+    # start command loop, the commander handles the exit command
     cmd_runner = Commander(render_engine, args)
     while True:
         cmd_runner.prompt_and_handle_command()

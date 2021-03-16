@@ -1,12 +1,15 @@
 import argparse
 import io
 import shlex
+import os
 
 from colorama import Fore, Style
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Callable
+from subprocess import call
+from os import system, name
 
 from .renderer import Renderer
 from portfolio import Portfolio
@@ -15,12 +18,14 @@ from portfolio import Portfolio
 @dataclass
 class CommandType(Enum):
     NONE = None
-    PRINT_PORTFOLIO_SUMMARY = "print_port"
-    PRINT_PORTFOLIO_GRAPH = "print_graph"
-    LIVE_TICKERS = "live_ticker"
+    HELP = "help"
+    PRINT_PORTFOLIO_SUMMARY = "summary"
+    PRINT_PORTFOLIO_GRAPH = "graph"
+    LIVE_TICKERS = "live"
     BUY_STOCK = "buy"
     SELL_STOCK = "sell"
-    MARKET_SYNC = "market_sync"
+    MARKET_SYNC = "sync"
+    CLEAR = "clear"
     EXIT = "exit"
 
 @dataclass
@@ -38,6 +43,13 @@ class CommandParser:
         self.parsers[CommandType.SELL_STOCK.value] = self.parsers[CommandType.BUY_STOCK.value]
         self.parsers[CommandType.MARKET_SYNC.value] = self._default_parser
         self.parsers[CommandType.EXIT.value] = self._default_parser
+        self.parsers[CommandType.CLEAR.value] = self._default_parser
+        self.parsers[CommandType.HELP.value] = self._default_parser
+
+        for c in CommandType:
+            if (self.parsers.get(c.value) is None):
+                print(f'{Fore.RED}Missing parser for command {c.value}{Style.RESET_ALL}')
+                self.parsers[c.value] = self._default_parser
 
     def _generate_portfolio_summary_parser(self):
         parser = argparse.ArgumentParser(description="Print Portfolio Summary")
@@ -98,13 +110,20 @@ class CommandRunner:
 
     def __post_init__(self):
         self.runners[CommandType.NONE.value] = self._default_nop
+        self.runners[CommandType.HELP.value] = self._default_nop
         self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = self._default_nop
         self.runners[CommandType.PRINT_PORTFOLIO_GRAPH.value] = self._default_nop
         self.runners[CommandType.LIVE_TICKERS.value] = self._default_nop
         self.runners[CommandType.MARKET_SYNC.value] = self._default_nop
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
         self.runners[CommandType.SELL_STOCK.value] = self.runners[CommandType.BUY_STOCK.value]
-        self.runners[CommandType.EXIT.value] = lambda _: exit()
+        self.runners[CommandType.EXIT.value] = lambda: exit() 
+        self.runners[CommandType.CLEAR.value] = lambda: os.system("clear") if os.name =='posix' else os.system("cls")
+
+        for c in CommandType:
+            if (self.runners.get(c.value) is None):
+                print(f'{Fore.RED}Missing runner for command {c.value}{Style.RESET_ALL}')
+                self.runners[c.value] = self._default_nop
 
     def _buy_sell_stock(self, cType: CommandType, portfolio: Portfolio, args):
         return
@@ -123,11 +142,11 @@ class Commander:
         self.portfolio = portfolio
 
     def prompt_and_handle_command(self):
+        # display prompt and get input
         print(f'{Fore.CYAN}$>>>>> {Style.RESET_ALL}', end="")
-
         raw_cmd = str(input())
-        curr_command, args = self.master_parser.parse_command(raw_cmd)
 
+        curr_command, args = self.master_parser.parse_command(raw_cmd)
         if (curr_command is CommandType.NONE or args is None):
             # NOP
             return
@@ -135,8 +154,8 @@ class Commander:
         runner = self.master_runner.runners[curr_command.value]
         if (curr_command is CommandType.PRINT_PORTFOLIO_SUMMARY):
             self.renderer.render()
-        elif (curr_command is CommandType.EXIT):
-            runner(1)
+        elif (curr_command is CommandType.EXIT or curr_command is CommandType.CLEAR):
+            runner()
         elif (curr_command is CommandType.BUY_STOCK):
             runner(curr_command, self.renderer.portfolio, args)
         elif (curr_command is CommandType.MARKET_SYNC):
