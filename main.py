@@ -45,7 +45,7 @@ def main():
     verify_stock_keys(stocks_config)
     merge_config(config, args)
 
-
+    """
     cmd_runner = Commander()
     cmd_runner.prompt_and_handle_command()
 
@@ -57,7 +57,19 @@ def main():
     # print to the screen
     render_engine = Renderer(args.rounding_mode, portfolio)
     render_engine.render()
+    """    
 
+    # populate portfolio
+    portfolio = port.Portfolio()
+    portfolio.load_from_config(stocks_config)
+    portfolio.market_sync(args)
+
+    # print to the screen
+    render_engine = Renderer(args.rounding_mode, portfolio)
+
+    cmd_runner = Commander(render_engine, args)
+    while True:
+        cmd_runner.prompt_and_handle_command()
     """
     portfolio.gen_graphs(
         args.independent_graphs, args.width, args.height, args.timezone
