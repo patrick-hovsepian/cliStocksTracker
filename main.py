@@ -50,17 +50,12 @@ def main():
     portfolio.load_from_config(stocks_config)
 
     # generate render engine
-    render_engine = Renderer(args.rounding_mode, portfolio)
+    render_engine = Renderer(args.rounding_mode)
 
     # start command loop, the commander handles the exit command
-    cmd_runner = Commander(render_engine, args)
+    cmd_runner = Commander(render_engine, portfolio, args)
     while True:
         cmd_runner.prompt_and_handle_command()
-    """
-    portfolio.gen_graphs(
-        args.independent_graphs, args.width, args.height, args.timezone
-    )
-    """
     
     return
 

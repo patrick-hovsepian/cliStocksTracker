@@ -2,6 +2,7 @@ import argparse
 import io
 import shlex
 import os
+import sys
 
 from colorama import Fore, Style
 from dataclasses import dataclass
@@ -30,25 +31,19 @@ class CommandType(Enum):
 
 @dataclass
 class CommandParser:
-    # parsers per command -- perhaps this should be a single parser with sub parsers?
+    # parsers per command 
+    # TODO: should this be a single parser with sub parsers?
     parsers = {}
     _default_parser = argparse.ArgumentParser(description="Default No Arguments")
 
     def __post_init__(self):
         self.parsers[CommandType.NONE.value] = self._default_parser
         self.parsers[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = self._generate_portfolio_summary_parser()
-        self.parsers[CommandType.PRINT_PORTFOLIO_GRAPH.value] = self._default_parser
-        self.parsers[CommandType.LIVE_TICKERS.value] = self._default_parser
         self.parsers[CommandType.BUY_STOCK.value] = self._generate_buy_sell_parser()
         self.parsers[CommandType.SELL_STOCK.value] = self.parsers[CommandType.BUY_STOCK.value]
-        self.parsers[CommandType.MARKET_SYNC.value] = self._default_parser
-        self.parsers[CommandType.EXIT.value] = self._default_parser
-        self.parsers[CommandType.CLEAR.value] = self._default_parser
-        self.parsers[CommandType.HELP.value] = self._default_parser
 
         for c in CommandType:
             if (self.parsers.get(c.value) is None):
-                print(f'{Fore.RED}Missing parser for command {c.value}{Style.RESET_ALL}')
                 self.parsers[c.value] = self._default_parser
 
     def _generate_portfolio_summary_parser(self):
@@ -88,7 +83,9 @@ class CommandParser:
         # first argument should be the actual command
         cmd = argument_list[0]
         if (cmd not in self.parsers):
-            print(f'{Fore.RED}Invalid command "{cmd}" specified - Allowed Commands:\n{list(self.parsers.keys())}{Style.RESET_ALL}')
+            print(f'{Fore.RED}Invalid command "{cmd}" specified - Allowed Commands:\
+                \n{[cmd.value for cmd in CommandType if cmd.value is not None]}\
+                \nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
             return CommandType.NONE, None
 
         # attempt to parse it
@@ -97,49 +94,50 @@ class CommandParser:
             # There's no option to control verbosity to print usage info it will print by default
             args, unknown = self.parsers[cmd].parse_known_args(argument_list[1:])
             return CommandType(cmd), args
+        except SystemExit:
+            # I guess since this isn't neccessarily meant to be used in a program itself, test for the help command explicity
+            if ("-h" not in argument_list and "--help" not in argument_list):
+                # redundant but prettier TODO: see if we can have the parser default to printing the full help
+                self.parsers[cmd].print_help()
+            return CommandType.NONE, None
         except:
             print(f'{Fore.RED}Failed to parse arguments for "{cmd}" command{Style.RESET_ALL}')
-            # self.parsers[cmd].print_help()
             return CommandType(cmd), None
 
 @dataclass
 class CommandRunner:
     # callables per command
     runners = {}
-    _default_nop = lambda _: _
+    _default_nop = lambda *_: _
 
     def __post_init__(self):
         self.runners[CommandType.NONE.value] = self._default_nop
-        self.runners[CommandType.HELP.value] = self._default_nop
-        self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = self._default_nop
-        self.runners[CommandType.PRINT_PORTFOLIO_GRAPH.value] = self._default_nop
-        self.runners[CommandType.LIVE_TICKERS.value] = self._default_nop
-        self.runners[CommandType.MARKET_SYNC.value] = self._default_nop
+        self.runners[CommandType.HELP.value] = lambda args: print(f'{Fore.CYAN}Available Commands:\n{[cmd.value for cmd in CommandType if cmd.value is not None]}\nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
+        self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.portfolio)
+        self.runners[CommandType.MARKET_SYNC.value] = lambda args: args.portfolio.market_sync(args.main_args)
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
         self.runners[CommandType.SELL_STOCK.value] = self.runners[CommandType.BUY_STOCK.value]
-        self.runners[CommandType.EXIT.value] = lambda: exit() 
-        self.runners[CommandType.CLEAR.value] = lambda: os.system("clear") if os.name =='posix' else os.system("cls")
+        self.runners[CommandType.EXIT.value] = lambda *_: exit() 
+        self.runners[CommandType.CLEAR.value] = lambda *_: os.system("clear") if os.name =='posix' else os.system("cls")
 
         for c in CommandType:
             if (self.runners.get(c.value) is None):
-                print(f'{Fore.RED}Missing runner for command {c.value}{Style.RESET_ALL}')
+                # print(f'{Fore.RED}Missing runner for command {c.value}{Style.RESET_ALL}')
                 self.runners[c.value] = self._default_nop
 
-    def _buy_sell_stock(self, cType: CommandType, portfolio: Portfolio, args):
+    def _buy_sell_stock(self, args: argparse.Namespace):
+        print(f'Order Type: {args.cmd} Stock: {args.stock} Count: {args.count} Price: {args.price}')
         return
 
 @dataclass
 class Commander:
-    # portfolio: Portfolio
     renderer: Renderer
+    portfolio: Portfolio
     main_args: argparse.Namespace
 
     def __post_init__(self):
         self.master_parser = CommandParser()
         self.master_runner = CommandRunner()
-
-    def add_portfolio(self, portfolio: Portfolio):
-        self.portfolio = portfolio
 
     def prompt_and_handle_command(self):
         # display prompt and get input
@@ -147,16 +145,29 @@ class Commander:
         raw_cmd = str(input())
 
         curr_command, args = self.master_parser.parse_command(raw_cmd)
+
+        # check for any failures during parsing
         if (curr_command is CommandType.NONE or args is None):
-            # NOP
             return
 
-        runner = self.master_runner.runners[curr_command.value]
-        if (curr_command is CommandType.PRINT_PORTFOLIO_SUMMARY):
-            self.renderer.render()
-        elif (curr_command is CommandType.EXIT or curr_command is CommandType.CLEAR):
-            runner()
-        elif (curr_command is CommandType.BUY_STOCK):
-            runner(curr_command, self.renderer.portfolio, args)
-        elif (curr_command is CommandType.MARKET_SYNC):
-            self.renderer.portfolio.market_sync(self.main_args)
+        # always set our 'special' arguments
+        # TODO: clean this up later
+        args.cmd = curr_command.value
+        args.renderer = self.renderer
+        args.portfolio = self.portfolio
+        args.main_args = self.main_args
+
+        # try to execute the command
+        try:
+            runner = self.master_runner.runners[curr_command.value]
+            
+            # all functions should conform to this signature
+            runner(args)
+        except SystemExit as err:
+            # expected as a result of the exit() python command, just re-raise
+            # eventually can be used for cleanup time
+            raise SystemExit
+        except:
+            e_type, e_value, e_trace = sys.exc_info()
+            e_value = e_value if e_value is not None else "Unknown error"
+            print(f'{Fore.RED}Failed to execute command \'{curr_command.value}\' - Error: {e_value}{Style.RESET_ALL}')

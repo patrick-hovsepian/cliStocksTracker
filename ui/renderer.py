@@ -35,6 +35,7 @@ def format_gl(value: float, is_currency: bool = True) -> str:
 
         return change_symbol + format_number(value)
 
+# TODO: refactor all formatters to only require a PortfolioEntry?
 _stock_column_formatters = {
     "Ticker" : ColumnFormatter("Ticker", 9, lambda stock: CellData(stock.symbol)),
     "Current Price" : ColumnFormatter("Last", 12, lambda stock: CellData(format_number(stock.curr_value))),
@@ -56,21 +57,11 @@ _portfolio_column_formatters = {
 
 # require portfolio passed in
 class Renderer(metaclass=utils.Singleton):
-    def __init__(self, rounding: str, portfolio: portfolio.Portfolio, *args, **kwargs):
+    def __init__(self, rounding: str, *args, **kwargs):
         self.mode = rounding
-        self.portfolio = portfolio
         return
 
-    def render(self):
-        """
-        for graph in self.portfolio.graphs:
-            graph.draw()
-        """
-
-        self.print_entries()
-        return
-
-    def print_gains(self, format_str, gain, timespan):
+    def _print_gains(self, portfolio: portfolio.Portfolio, gain: float, timespan):
         positive_gain = gain >= 0
         gain_symbol = "+" if positive_gain else "-"
         gain_verboge = "Gained" if positive_gain else "Lost"
@@ -78,15 +69,15 @@ class Renderer(metaclass=utils.Singleton):
         print("{:25}".format("Value " + gain_verboge + " " + timespan + ": "), end="")
         print(Fore.GREEN if positive_gain else Fore.RED, end="")
         print(
-            format_str.format(
+            "{:13}".format(
                 gain_symbol + "$" + str(abs(utils.round_value(gain, self.mode, 2)))
             )
-            + format_str.format(
+            + "{:13}".format(
                 gain_symbol
                 + str(
                     abs(
                         utils.round_value(
-                            gain / self.portfolio.cost_value * 100, self.mode, 2
+                            gain / portfolio.cost_value * 100, self.mode, 2
                         )
                     )
                 )
@@ -96,7 +87,7 @@ class Renderer(metaclass=utils.Singleton):
         print(Style.RESET_ALL, end="")
         return
 
-    def print_overall_summary(self):
+    def _print_overall_summary(self, portfolio: portfolio.Portfolio):
         print(
             "\n"
             + "{:25}".format("Current Time: ")
@@ -104,25 +95,25 @@ class Renderer(metaclass=utils.Singleton):
         )
         print(
             "{:25}".format("Total Cost: ")
-            + "{:13}".format("$" + format_number(self.portfolio.cost_value))
+            + "{:13}".format("$" + format_number(portfolio.cost_value))
         )
         print(
             "{:25}".format("Total Value: ")
-            + "{:13}".format("$" + format_number(self.portfolio.market_value))
+            + "{:13}".format("$" + format_number(portfolio.market_value))
         )
 
         # print daily value
         value_gained_day = (
-            self.portfolio.market_value - self.portfolio.open_market_value
+            portfolio.market_value - portfolio.open_market_value
         )
-        self.print_gains("{:13}", value_gained_day, "Today")
+        self._print_gains(portfolio, value_gained_day, "Today")
 
         # print overall value
-        value_gained_all = self.portfolio.market_value - self.portfolio.cost_value
-        self.print_gains("{:13}", value_gained_all, "Overall")
+        value_gained_all = portfolio.market_value - portfolio.cost_value
+        self._print_gains(portfolio, value_gained_all, "Overall")
         return
 
-    def print_entries(self, print_cols = list(_stock_column_formatters.keys()) + list(_portfolio_column_formatters.keys())):
+    def print_entries(self, portfolio: portfolio.Portfolio, print_cols = list(_stock_column_formatters.keys()) + list(_portfolio_column_formatters.keys())):
         # print the heading
         heading = "\n\t"
         divider = "\t"
@@ -133,7 +124,7 @@ class Renderer(metaclass=utils.Singleton):
         print(heading + "\n" + divider)
 
         # now print every portfolio entry
-        for i, entry in enumerate(self.portfolio.stocks.values()):
+        for i, entry in enumerate(portfolio.stocks.values()):
             stock = entry.stock
             line = "\t"
 
@@ -154,28 +145,11 @@ class Renderer(metaclass=utils.Singleton):
             line += Style.RESET_ALL
             print(line, flush = True)
 
-        # TODO: print totals line
-        
-        self.print_overall_summary()
+        self._print_overall_summary(portfolio)
 
-        """
-        print(Fore.CYAN)
-        line_start = "="
-        for i in range(0, 10):
-            line_start += "="
-            print(line_start, end="", flush=True)
-            time.sleep(.1)
+        return
 
-        print('\r\r\r' + Fore.YELLOW, end='')
-        line_start = "*"
-        for i in range(0, 10):
-            line_start += "*"
-            print(line_start, end="", flush=True)
-            time.sleep(.1)
-        print(Style.RESET_ALL)
-
-        print(Fore.MAGENTA + "{:25}".format("==="), end="")
-        print("\r" + Fore.BLUE + "{:25}".format("="), end="")
-        """
-
+    def print_graphs(self, portfolio: portfolio.Portfolio):
+        for graph in portfolio.graphs:
+            graph.draw()
         return
