@@ -20,6 +20,7 @@ class CommandType(Enum):
     NONE = None
     HELP = "help"
     LOAD = "load"
+    LIST = "list"
     PRINT_PORTFOLIO_SUMMARY = "summary"
     PRINT_PORTFOLIO_GRAPH = "graph"
     LIVE_TICKERS = "live"
@@ -51,19 +52,15 @@ class CommandParser:
     def _generate_load_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="Load Portfolio File")
         parser.add_argument(
-            "-f", 
-            "--filename",
+            "name", 
             type=str,
-            help="file path of portfolio to load",
-            required=True
+            help="name to give the portfolio"
         )
         parser.add_argument(
-            "-n", 
-            "--name",
+            "filename",
             type=str,
-            help="name to give the portfolio",
-            required=True
-        )
+            help="file path of portfolio to load"
+        )        
         parser.add_argument(
             "--reload",
             help="re-initialize the portfolio even if it exists",
@@ -75,11 +72,9 @@ class CommandParser:
     def _generate_portfolio_summary_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="Print Portfolio Summary Table")
         parser.add_argument(
-            "-n", 
-            "--name",
+            "name",
             type=str,
-            help="name of the portfolio to print",
-            required=True
+            help="name of the portfolio to print"
         )
         # TODO: add column argument
         return parser
@@ -87,11 +82,9 @@ class CommandParser:
     def _generate_sync_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="Sync Market Data")
         parser.add_argument(
-            "-n", 
-            "--name",
+            "name",
             type=str,
-            help="name of the portfolio to sync",
-            required=True
+            help="name of the portfolio to sync"
         )
         parser.add_argument(
             "-ti",
@@ -154,6 +147,7 @@ class CommandParser:
             # remove the command part to supply true args to parser
             # There's no option to control verbosity to print usage info it will print by default
             args, unknown = self.parsers[cmd].parse_known_args(argument_list[1:])
+            args.cmd = cmd # for reference sake
             return CommandType(cmd), args
         except SystemExit:
             # I guess since this isn't neccessarily meant to be used in a program itself, test for the help command explicity
@@ -173,7 +167,8 @@ class CommandRunner:
 
     def __post_init__(self):
         self.runners[CommandType.NONE.value] = self._default_nop
-        self.runners[CommandType.HELP.value] = lambda args: print(f'{Fore.CYAN}Available Commands:\n{[cmd.value for cmd in CommandType if cmd.value is not None]}\nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
+        self.runners[CommandType.LIST.value] = lambda args: print(f'{Fore.YELLOW}Loaded Portfolios: {[portfolio for portfolio in args.portfolios]}{Style.RESET_ALL}')
+        self.runners[CommandType.HELP.value] = lambda args: print(f'{Fore.YELLOW}Available Commands:\n{[cmd.value for cmd in CommandType if cmd.value is not None]}\nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
         self.runners[CommandType.LOAD.value] = self._load_portfolio
         self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.portfolios[args.name])
         self.runners[CommandType.MARKET_SYNC.value] = self._sync_portfolio
@@ -235,7 +230,6 @@ class Commander:
 
         # always set our 'special' arguments
         # TODO: clean this up later
-        args.cmd = curr_command.value
         args.renderer = self.renderer
         args.portfolios = self.portfolios
 
