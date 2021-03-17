@@ -33,27 +33,18 @@ def merge_config(config, args):
 
 def main():
     config = multiconfigparser.ConfigParserMultiOpt()
-    stocks_config = multiconfigparser.ConfigParserMultiOpt()
     args = parse_args()
 
     # read config files
     config.read(args.config)
-    stocks_config.read(args.portfolio_config)
 
-    # verify that config file is correct
-    # merge options from cli and config
-    verify_stock_keys(stocks_config)
     merge_config(config, args)
-
-    # populate portfolio
-    portfolio = port.Portfolio()
-    portfolio.load_from_config(stocks_config)
 
     # generate render engine
     render_engine = Renderer(args.rounding_mode)
 
     # start command loop, the commander handles the exit command
-    cmd_runner = Commander(render_engine, portfolio, args)
+    cmd_runner = Commander(render_engine)
     while True:
         cmd_runner.prompt_and_handle_command()
     
@@ -94,20 +85,6 @@ def parse_args():
         default="math",
     )
     parser.add_argument(
-        "-ti",
-        "--time-interval",
-        type=str,
-        help="specify time interval for graphs (ex: 1m, 15m, 1h) (default 1m)",
-        default="1m",
-    )
-    parser.add_argument(
-        "-tp",
-        "--time-period",
-        type=str,
-        help="specify time period for graphs (ex: 15m, 1h, 1d) (default 1d)",
-        default="1d",
-    )
-    parser.add_argument(
         "--config", type=str, help="path to a config.ini file", default="config.ini"
     )
     parser.add_argument(
@@ -118,15 +95,6 @@ def parse_args():
     )
     args = parser.parse_args()
     return args
-
-# TODO: Remove
-def verify_stock_keys(stocks_config):
-    # check that at least one stock is in portfolio.ini
-    if list(stocks_config.keys()) == ["DEFAULT"]:
-        print(
-            "portfolio.ini has no stocks added or does not exist. There is nothing to show."
-        )
-        exit()  # nothing else to do! Just force exit.
 
 
 if __name__ == "__main__":

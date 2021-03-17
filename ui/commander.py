@@ -3,6 +3,7 @@ import io
 import shlex
 import os
 import sys
+import multiconfigparser
 
 from colorama import Fore, Style
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from portfolio import Portfolio
 class CommandType(Enum):
     NONE = None
     HELP = "help"
+    LOAD = "load"
     PRINT_PORTFOLIO_SUMMARY = "summary"
     PRINT_PORTFOLIO_GRAPH = "graph"
     LIVE_TICKERS = "live"
@@ -38,6 +40,8 @@ class CommandParser:
 
     def __post_init__(self):
         self.parsers[CommandType.NONE.value] = self._default_parser
+        self.parsers[CommandType.LOAD.value] = self._generate_load_parser()
+        self.parsers[CommandType.MARKET_SYNC.value] = self._generate_sync_parser()
         self.parsers[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = self._generate_portfolio_summary_parser()
         self.parsers[CommandType.BUY_STOCK.value] = self._generate_buy_sell_parser()
         self.parsers[CommandType.SELL_STOCK.value] = self.parsers[CommandType.BUY_STOCK.value]
@@ -46,15 +50,68 @@ class CommandParser:
             if (self.parsers.get(c.value) is None):
                 self.parsers[c.value] = self._default_parser
 
-    def _generate_portfolio_summary_parser(self):
-        parser = argparse.ArgumentParser(description="Print Portfolio Summary")
+    def _generate_load_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(description="Load Portfolio File")
+        parser.add_argument(
+            "-f", 
+            "--filename",
+            type=str,
+            help="file path of portfolio to load",
+            required=True
+        )
+        parser.add_argument(
+            "-n", 
+            "--name",
+            type=str,
+            help="name to give the portfolio",
+            required=True
+        )
+        parser.add_argument(
+            "--reload",
+            help="re-initialize the portfolio even if it exists",
+            action="store_true",
+            default=False
+        )
+        return parser
 
-        # TODO: add portfolio argument
-        # TODO: add stock argument
+    def _generate_portfolio_summary_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(description="Print Portfolio Summary Table")
+        parser.add_argument(
+            "-n", 
+            "--name",
+            type=str,
+            help="name of the portfolio to print",
+            required=True
+        )
         # TODO: add column argument
         return parser
 
-    def _generate_buy_sell_parser(self):
+    def _generate_sync_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(description="Sync Market Data")
+        parser.add_argument(
+            "-n", 
+            "--name",
+            type=str,
+            help="name of the portfolio to sync",
+            required=True
+        )
+        parser.add_argument(
+            "-ti",
+            "--time-interval",
+            type=str,
+            help="specify time interval for graphs (ex: 1m, 15m, 1h) (default 1m)",
+            default="1m",
+        )
+        parser.add_argument(
+            "-tp",
+            "--time-period",
+            type=str,
+            help="specify time period for graphs (ex: 15m, 1h, 1d) (default 1d)",
+            default="1d",
+        )
+        return parser
+
+    def _generate_buy_sell_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="Buy or Sell Order", prog="buy | sell")
         parser.add_argument(
             "stock",
@@ -113,8 +170,9 @@ class CommandRunner:
     def __post_init__(self):
         self.runners[CommandType.NONE.value] = self._default_nop
         self.runners[CommandType.HELP.value] = lambda args: print(f'{Fore.CYAN}Available Commands:\n{[cmd.value for cmd in CommandType if cmd.value is not None]}\nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
-        self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.portfolio)
-        self.runners[CommandType.MARKET_SYNC.value] = lambda args: args.portfolio.market_sync(args.main_args)
+        self.runners[CommandType.LOAD.value] = self._load_portfolio
+        self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.portfolios[args.name])
+        self.runners[CommandType.MARKET_SYNC.value] = lambda args: args.portfolios[args.name].market_sync(args)
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
         self.runners[CommandType.SELL_STOCK.value] = self.runners[CommandType.BUY_STOCK.value]
         self.runners[CommandType.EXIT.value] = lambda *_: exit() 
@@ -129,15 +187,28 @@ class CommandRunner:
         print(f'Order Type: {args.cmd} Stock: {args.stock} Count: {args.count} Price: {args.price}')
         return
 
+    def _load_portfolio(self, args: argparse.Namespace):
+        portfolio = args.portfolios.get(args.name)
+        if (portfolio is not None and not args.reload):
+            print(f'{Fore.YELLOW}Portfolio with name {args.name} already exists - You can re-load it with the --reload option{Style.RESET_ALL}')
+            return
+        
+        #TODO make portfolio manager and put this in there for now
+        stocks_config = multiconfigparser.ConfigParserMultiOpt()
+        stocks_config.read(args.filename)
+
+        portfolio = Portfolio()
+        portfolio.load_from_config(stocks_config)
+        args.portfolios[args.name] = portfolio
+
 @dataclass
 class Commander:
-    renderer: Renderer
-    portfolio: Portfolio
-    main_args: argparse.Namespace
+    renderer: Renderer    
 
     def __post_init__(self):
         self.master_parser = CommandParser()
         self.master_runner = CommandRunner()
+        self.portfolios = {}
 
     def prompt_and_handle_command(self):
         # display prompt and get input
@@ -154,8 +225,7 @@ class Commander:
         # TODO: clean this up later
         args.cmd = curr_command.value
         args.renderer = self.renderer
-        args.portfolio = self.portfolio
-        args.main_args = self.main_args
+        args.portfolios = self.portfolios
 
         # try to execute the command
         try:
