@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Callable
-from subprocess import call
-from os import system, name
 
 from .renderer import Renderer
 from portfolio import Portfolio
@@ -109,6 +107,12 @@ class CommandParser:
             help="specify time period for graphs (ex: 15m, 1h, 1d) (default 1d)",
             default="1d",
         )
+        parser.add_argument(
+            "--continuous",
+            help="specify to enable continuous syncing in the background",
+            action="store_true",
+            default=False
+        )
         return parser
 
     def _generate_buy_sell_parser(self) -> argparse.ArgumentParser:
@@ -172,7 +176,7 @@ class CommandRunner:
         self.runners[CommandType.HELP.value] = lambda args: print(f'{Fore.CYAN}Available Commands:\n{[cmd.value for cmd in CommandType if cmd.value is not None]}\nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
         self.runners[CommandType.LOAD.value] = self._load_portfolio
         self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.portfolios[args.name])
-        self.runners[CommandType.MARKET_SYNC.value] = lambda args: args.portfolios[args.name].market_sync(args)
+        self.runners[CommandType.MARKET_SYNC.value] = self._sync_portfolio
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
         self.runners[CommandType.SELL_STOCK.value] = self.runners[CommandType.BUY_STOCK.value]
         self.runners[CommandType.EXIT.value] = lambda *_: exit() 
@@ -200,6 +204,14 @@ class CommandRunner:
         portfolio = Portfolio()
         portfolio.load_from_config(stocks_config)
         args.portfolios[args.name] = portfolio
+    
+    def _sync_portfolio(self, args: argparse.Namespace):
+        args.portfolios[args.name].market_sync(args)
+
+        if(args.continuous):
+            # TODO: enable continuous mode
+            print('Continuous sync coming soon')
+
 
 @dataclass
 class Commander:

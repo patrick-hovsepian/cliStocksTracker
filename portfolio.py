@@ -70,7 +70,7 @@ class PortfolioEntry:
         self.__post_init__()
 
 
-class Portfolio(metaclass=utils.Singleton):
+class Portfolio():
     def __init__(self, *args, **kwargs):
         self.stocks = {}
 
