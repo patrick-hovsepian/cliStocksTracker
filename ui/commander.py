@@ -3,6 +3,8 @@ import io
 import shlex
 import os
 import sys
+import time
+import threading
 import multiconfigparser
 
 from colorama import Fore, Style
@@ -12,7 +14,7 @@ from enum import Enum
 from typing import List, Callable
 
 from .renderer import Renderer
-from portfolio import Portfolio
+from portfolio import Portfolio, PortfolioManager
 
 
 @dataclass
@@ -106,6 +108,13 @@ class CommandParser:
             action="store_true",
             default=False
         )
+        parser.add_argument(
+            "-v", 
+            "--verbose",
+            help="display progress bar on sync",
+            action="store_true",
+            default=False
+        )
         return parser
 
     def _generate_buy_sell_parser(self) -> argparse.ArgumentParser:
@@ -167,10 +176,10 @@ class CommandRunner:
 
     def __post_init__(self):
         self.runners[CommandType.NONE.value] = self._default_nop
-        self.runners[CommandType.LIST.value] = lambda args: print(f'{Fore.YELLOW}Loaded Portfolios: {[portfolio for portfolio in args.portfolios]}{Style.RESET_ALL}')
+        self.runners[CommandType.LIST.value] = lambda args: print(f'{Fore.YELLOW}Loaded Portfolios: {args.manager.get_portfolio_names()}{Style.RESET_ALL}')
         self.runners[CommandType.HELP.value] = lambda args: print(f'{Fore.YELLOW}Available Commands:\n{[cmd.value for cmd in CommandType if cmd.value is not None]}\nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
         self.runners[CommandType.LOAD.value] = self._load_portfolio
-        self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.portfolios[args.name])
+        self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.manager.get_portfolio(args.name))
         self.runners[CommandType.MARKET_SYNC.value] = self._sync_portfolio
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
         self.runners[CommandType.SELL_STOCK.value] = self.runners[CommandType.BUY_STOCK.value]
@@ -187,26 +196,15 @@ class CommandRunner:
         return
 
     def _load_portfolio(self, args: argparse.Namespace):
-        portfolio = args.portfolios.get(args.name)
+        portfolio = args.manager.get_portfolio(args.name)
         if (portfolio is not None and not args.reload):
             print(f'{Fore.YELLOW}Portfolio with name {args.name} already exists - You can re-load it with the --reload option{Style.RESET_ALL}')
             return
         
-        #TODO make portfolio manager and put this in there for now
-        stocks_config = multiconfigparser.ConfigParserMultiOpt()
-        stocks_config.read(args.filename)
-
-        portfolio = Portfolio()
-        portfolio.load_from_config(stocks_config)
-        args.portfolios[args.name] = portfolio
+        args.manager.load(args.name, args.filename)
     
     def _sync_portfolio(self, args: argparse.Namespace):
-        args.portfolios[args.name].market_sync(args)
-
-        if(args.continuous):
-            # TODO: enable continuous mode
-            print('Continuous sync coming soon')
-
+        args.manager.sync(args.name, args.time_period, args.time_interval, args.continuous, args.verbose)
 
 @dataclass
 class Commander:
@@ -215,7 +213,7 @@ class Commander:
     def __post_init__(self):
         self.master_parser = CommandParser()
         self.master_runner = CommandRunner()
-        self.portfolios = {}
+        self.manager = PortfolioManager()
 
     def prompt_and_handle_command(self):
         # display prompt and get input
@@ -231,7 +229,7 @@ class Commander:
         # always set our 'special' arguments
         # TODO: clean this up later
         args.renderer = self.renderer
-        args.portfolios = self.portfolios
+        args.manager = self.manager
 
         # try to execute the command
         try:
@@ -241,7 +239,7 @@ class Commander:
             runner(args)
         except SystemExit as err:
             # expected as a result of the exit() python command, just re-raise
-            # eventually can be used for cleanup time
+            self.manager.cleanup()
             raise SystemExit
         except:
             e_type, e_value, e_trace = sys.exc_info()

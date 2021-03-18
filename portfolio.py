@@ -4,6 +4,9 @@ import plotille
 import warnings
 import webcolors
 import autocolors
+import time
+import threading
+import multiconfigparser
 
 import numpy as np
 import yfinance as market
@@ -70,7 +73,7 @@ class PortfolioEntry:
         self.__post_init__()
 
 
-class Portfolio():
+class Portfolio:
     def __init__(self, *args, **kwargs):
         self.stocks = {}
 
@@ -212,44 +215,39 @@ class Portfolio():
 
         return
 
-    """
-    download all ticker data in a single request
-    harder to parse but this provides a signficant performance boost
-    """
-    def _download_market_data(self, args, stocks):
-        # get graph time interval and period
-        time_period = args.time_period if args.time_period else "1d"
-        time_interval = args.time_interval if args.time_interval else "1m"
-
+    def _download_market_data(self, stocks, time_period, time_interval, verbose):
         try:
             return market.download(
                 tickers=stocks,
                 period=time_period,
                 interval=time_interval,
-                progress=True,
+                progress=verbose,
             )
         except:
-            print(Fore.RED, "Failed to download market data", Style.RESET_ALL)
+            if (verbose):
+                print(f'{Fore.RED}Failed to download market data{Style.RESET_ALL}')
 
-    def market_sync(self, args, stock_list = ()):
-        # TODO: better error handling
-        if (not stock_list):
-            #print("No tickers supplied - default to existing entries")
-            stock_list = list(self.stocks.keys())
+    def market_sync(self, time_period: str, time_interval: str, verbose: bool):
+        stock_list = list(self.stocks.keys())
 
-        # download all stock data
-        print(Fore.LIGHTBLACK_EX, end="")
-        market_data = self._download_market_data(args, stock_list)
-        print(Style.RESET_ALL)
+        if (len(stock_list) == 0):
+            return
+
+        # download all stock data        
+        market_data = self._download_market_data(stock_list, time_period, time_interval, verbose)
 
         # iterate through each ticker data
          # TODO: add error handling to stocks not found
         data_key = "Open"
         for ticker in stock_list:
-            # convert the numpy array into a list of prices while removing NaN values
-            data = market_data[data_key][ticker].values[
-                ~np.isnan(market_data[data_key][ticker].values)
-            ]
+            data = [0]
+            if (market_data.get(data_key) is not None and market_data[data_key].get(ticker) is not None):
+                # convert the numpy array into a list of prices while removing NaN values
+                data = market_data[data_key][ticker].values[
+                    ~np.isnan(market_data[data_key][ticker].values)
+                ]
+
+            # TODO: upsert with 0 data for now but eventually market the entry in an error state
             self._upsert_entry(ticker, data, TransactionType.MARKET_SYNC)
 
     def gen_graphs(self, independent_graphs, graph_width, graph_height, cfg_timezone):
@@ -289,6 +287,61 @@ class Portfolio():
         self.graphs = graphs
         return
 
+@dataclass
+class ManagedState:
+    portfolio: Portfolio
+    sync_thread: threading.Thread = None
+
+@dataclass
+class PortfolioManager:
+    portfolio_states = {}
+
+    def _get(self, name: str):
+        return self.portfolio_states.get(name)
+
+    def cleanup(self):
+        for pstate in self.portfolio_states.values:
+            if (pstate.sync_thread is not None):
+                pstate.sync_thread.stop()
+
+    def get_portfolio(self, name: str):
+        return self._get(name).portfolio if self._get(name) is not None else None
+
+    def get_portfolio_names(self):
+        return list(self.portfolio_states.keys())
+
+    def load(self, name: str, filename: str):
+        stocks_config = multiconfigparser.ConfigParserMultiOpt()
+        stocks_config.read(filename)
+
+        portfolio = Portfolio()
+        portfolio.load_from_config(stocks_config)
+
+        self.portfolio_states[name] = ManagedState(portfolio, None)
+
+    def sync(self, name: str, time_period: str, time_interval: str, continuous: bool, verbose: bool):
+        pstate = self._get(name)
+        if (pstate is None or pstate.portfolio is None or pstate.sync_thread is not None):
+            return
+
+        pstate.portfolio.market_sync(time_period, time_interval, verbose)
+        if (continuous != True):
+            return
+
+        syncer = threading.Thread(name=f'MarketSync_{name}', target=lambda: self._continuous_sync(pstate, time_period, time_interval, verbose))
+        syncer.start()
+        pstate.sync_thread = syncer
+
+    def _continuous_sync(self, pstate, time_period, time_interval, verbose):
+        while True:
+            try:
+                time.sleep(2)
+                pstate.portfolio.market_sync(time_period, time_interval, verbose)
+            except SystemExit as err:
+                raise SystemExit
+            except:
+                pass
+        
 
 class Graph:
     def __init__(
