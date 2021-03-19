@@ -34,7 +34,7 @@ class CommandType(Enum):
 
 @dataclass
 class CommandParser:
-    # parsers per command 
+    # parser per command 
     # TODO: should this be a single parser with sub parsers?
     parsers = {}
     _default_parser = argparse.ArgumentParser(description="Default No Arguments")

@@ -295,14 +295,16 @@ class ManagedState:
 @dataclass
 class PortfolioManager:
     portfolio_states = {}
+    _stop_workers = False
 
     def _get(self, name: str):
         return self.portfolio_states.get(name)
 
     def cleanup(self):
-        for pstate in self.portfolio_states.values:
+        self._stop_workers = True
+        for pstate in self.portfolio_states.values():
             if (pstate.sync_thread is not None):
-                pstate.sync_thread.stop()
+                pstate.sync_thread.join()
 
     def get_portfolio(self, name: str):
         return self._get(name).portfolio if self._get(name) is not None else None
@@ -335,13 +337,15 @@ class PortfolioManager:
     def _continuous_sync(self, pstate, time_period, time_interval, verbose):
         while True:
             try:
+                if (self._stop_workers == True):
+                    return
                 time.sleep(2)
                 pstate.portfolio.market_sync(time_period, time_interval, verbose)
             except SystemExit as err:
                 raise SystemExit
             except:
                 pass
-        
+
 
 class Graph:
     def __init__(
