@@ -58,27 +58,27 @@ class PortfolioEntry:
         self.holding_open_value = 0
         self.holding_market_value = 0
         self.cost_basis = 0
+        self.gains = 0
         self.gains_per_share = 0
-
-    def calc_value(self):
-        self.holding_market_value = self.stock.curr_value * self.count
-        self.holding_open_value = self.stock.open_value * self.count
-        self.cost_basis = self.count * self.average_cost
-        self.gains = self.holding_market_value - self.cost_basis if len(self.stock.data) != 1 else 0
-        self.gains_per_share = self.gains / self.count if self.count > 0 else 0
-        return
 
     def process_transaction(self, ttype: TransactionType, count: float = 0, pper_share: float = 0, data: list = (0)):
         if ttype is TransactionType.BUY:
             self.count += count
-            self.average_cost = (self.cost_basis + (count * pper_share)) / self.count
+            self.cost_basis += (count * pper_share)
+            self.average_cost = self.cost_basis / self.count
         elif ttype is TransactionType.SELL:
             self._realized_gains += ((pper_share - self.average_cost) * count)
             self.count -= count
-            self.average_cost = (self.cost_basis - (count * self.average_cost)) / self.count
+            self.cost_basis -= (count * self.average_cost)
+            self.average_cost = self.cost_basis / self.count if self.count > 0 else 0
         elif ttype is TransactionType.MARKET_SYNC:
             self.stock.data = data
             self.stock.reinit()
+
+            self.holding_market_value = self.stock.curr_value * self.count
+            self.holding_open_value = self.stock.open_value * self.count
+            self.gains = self.holding_market_value - self.cost_basis
+            self.gains_per_share = self.gains / self.count if self.count > 0 else 0
 
 @dataclass
 class Portfolio:
@@ -89,7 +89,6 @@ class Portfolio:
     # amount invested into the portfolio (sum of cost of share cost)
     cost_value = 0
     market_value = 0
-    _is_dirty = False
 
     def calc_value(self):
         self.open_market_value = 0
@@ -97,7 +96,6 @@ class Portfolio:
         self.market_value = 0
 
         for entry in self.stocks.values():
-            entry.calc_value()
             self.open_market_value += entry.holding_open_value
             self.market_value += entry.holding_market_value
             self.cost_value += entry.cost_basis
@@ -284,9 +282,6 @@ class PortfolioManager:
     def load(self, name: str, filename: str):
         config = configparser.ConfigParser()
         config.read(filename)
-
-        stocks_config = multiconfigparser.ConfigParserMultiOpt()
-        stocks_config.read(filename)
 
         portfolio = Portfolio()
         portfolio.load_from_config(config)
