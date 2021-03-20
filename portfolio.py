@@ -6,30 +6,31 @@ import webcolors
 import autocolors
 import time
 import threading
+import configparser
 import multiconfigparser
 
 import numpy as np
 import yfinance as market
 
 from colorama import Fore, Style
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum, auto
+from enum import Enum
 
 @dataclass 
 class TransactionType(Enum):
-    NONE = auto()
-    BUY = auto(),
-    SELL = auto(),
-    MARKET_SYNC = auto()
+    NONE = None
+    BUY = "buy"
+    SELL = "sell"
+    MARKET_SYNC = "sync"
 
 
 @dataclass
 class Stock:
     symbol: str
-    data: list = (0)
+    data: list[int] = field(default_factory=lambda: [0])
 
-    # TODO: better error handling on stocks not found
+    # TODO: better error handling on data
     def __post_init__(self):
         self.curr_value = self.data[-1]
         self.open_value = self.data[0]
@@ -53,97 +54,53 @@ class PortfolioEntry:
     color: str = None
 
     def __post_init__(self):
+        self._realized_gains: float = 0
+        self.holding_open_value = 0
+        self.holding_market_value = 0
+        self.cost_basis = 0
+        self.gains_per_share = 0
+
+    def calc_value(self):
         self.holding_market_value = self.stock.curr_value * self.count
         self.holding_open_value = self.stock.open_value * self.count
         self.cost_basis = self.count * self.average_cost
-        self.gains = self.holding_market_value - self.cost_basis
+        self.gains = self.holding_market_value - self.cost_basis if len(self.stock.data) != 1 else 0
         self.gains_per_share = self.gains / self.count if self.count > 0 else 0
         return
 
-    def process_transaction(self, ttype: TransactionType, count: float, cost: float, data: list):
+    def process_transaction(self, ttype: TransactionType, count: float = 0, pper_share: float = 0, data: list = (0)):
         if ttype is TransactionType.BUY:
             self.count += count
-            self.average_cost = (self.cost_basis + cost) / 2
+            self.average_cost = (self.cost_basis + (count * pper_share)) / self.count
         elif ttype is TransactionType.SELL:
+            self._realized_gains += ((pper_share - self.average_cost) * count)
             self.count -= count
+            self.average_cost = (self.cost_basis - (count * self.average_cost)) / self.count
         elif ttype is TransactionType.MARKET_SYNC:
             self.stock.data = data
             self.stock.reinit()
 
-        self.__post_init__()
-
-
+@dataclass
 class Portfolio:
-    def __init__(self, *args, **kwargs):
-        self.stocks = {}
+    stocks = {}
 
-        # portfolio worth at market open
+    # portfolio worth at market open
+    open_market_value = 0
+    # amount invested into the portfolio (sum of cost of share cost)
+    cost_value = 0
+    market_value = 0
+    _is_dirty = False
+
+    def calc_value(self):
         self.open_market_value = 0
-        # amount invested into the portfolio (sum of cost of share cost)
         self.cost_value = 0
         self.market_value = 0
-        return
 
-    # TODO: clean this up -- better as separate market update function?
-    # TODO: remove graph and color from here?
-    def _upsert_entry(
-            self,
-            ticker: str,            
-            data: list = (0), 
-            ttype: TransactionType = TransactionType.NONE,
-            count: float = 0, 
-            bought_at: float = 0, 
-            color: str = None, 
-            graph: bool = False):
-        # first see if it's an existing entry we can update
-        entry = self.get_stock(ticker)
-        if (entry != None):
-            # clear portfolio data so we can recalc -- TODO: clean this up
-            self.open_market_value -= entry.holding_open_value
-            self.market_value -= entry.holding_market_value
-            self.cost_value -= entry.cost_basis
-
-            entry.color = entry.color if ttype == TransactionType.MARKET_SYNC else color
-            entry.graph = entry.graph if ttype == TransactionType.MARKET_SYNC else graph
-            entry.process_transaction(ttype, count, bought_at, data)
-
-            # update portfolio values
+        for entry in self.stocks.values():
+            entry.calc_value()
             self.open_market_value += entry.holding_open_value
             self.market_value += entry.holding_market_value
             self.cost_value += entry.cost_basis
-            return
-
-        # insert new entry
-        self._add_new_entry(ticker, data, count, bought_at, color, graph)
-        return
-
-    def _remove_entry(self, ticker: str):
-        entry = self.get_stock(ticker)
-        if (entry == None):
-            return
-
-        # remove entries effect on portoflio
-        self.open_market_value -= entry.holding_open_value
-        self.market_value -= entry.holding_market_value
-        self.cost_value -= entry.cost_basis
-
-        del self.stocks
-
-    def _add_new_entry(
-            self, 
-            ticker: str,
-            data: list, 
-            count: float, 
-            bought_at: float, 
-            color: str, 
-            graph: bool):
-        entry = PortfolioEntry(Stock(ticker, data), count, bought_at, graph, color)
-        self.stocks[ticker] = entry
-
-        self.open_market_value += entry.holding_open_value
-        self.market_value += entry.holding_market_value
-        self.cost_value += entry.cost_basis
-        return
 
     def get_stocks(self):
         return self.stocks
@@ -185,35 +142,40 @@ class Portfolio:
         return count, bought_at
 
     def load_from_config(self, stocks_config):
+        # process the config -- each stock is expected to have a section
         for ticker in stocks_config.sections():
-            # calculate average buy in
-            buyin = (
-                stocks_config[ticker]["buy"]
-                if "buy" in list(stocks_config[ticker].keys())
-                else ()
-            )
-            sellout = (
-                stocks_config[ticker]["sell"]
-                if "sell" in list(stocks_config[ticker].keys())
-                else ()
-            )
-            count, bought_at = self.average_buyin(buyin, sellout)
+            stock_data = stocks_config[ticker]
 
-            # Check the stock color for graphing
-            color = (
-                str(stocks_config[ticker]["color"])
-                if "color" in list(stocks_config[ticker].keys())
-                else None
-            )
+            entry: PortfolioEntry = self.stocks.get(ticker, 
+                PortfolioEntry(
+                    stock= Stock(ticker), 
+                    color= stock_data.get("color"), 
+                    graph= (stock_data.get("graph", False))))
 
-            should_graph = (
-                "graph" in list(stocks_config[ticker].keys())
-                and stocks_config[ticker]["graph"] == "True"
-            )
+            # translate transactions
+            transactions = stock_data.get('transactions', "")
+            for order in transactions.split(","):
+                parts = order.strip().split()
+                if (len(parts) != 2):
+                    continue
 
-            self._upsert_entry(ticker, [0], TransactionType.BUY, count, bought_at, color, should_graph)
+                if (parts[0] != TransactionType.BUY.value and 
+                    parts[0] != TransactionType.SELL.value):
+                    continue
 
-        return
+                ttype = TransactionType(parts[0])
+                price_parts = parts[1].split("@")
+                if (len(price_parts) != 2):
+                    continue
+
+                count = float(price_parts[0])
+                price = float(price_parts[1])
+
+                entry.process_transaction(ttype, count, price)
+            self.stocks[ticker] = entry
+
+        # finally, rebalance
+        self.calc_value()
 
     def _download_market_data(self, stocks, time_period, time_interval, verbose):
         try:
@@ -240,6 +202,8 @@ class Portfolio:
          # TODO: add error handling to stocks not found
         data_key = "Open"
         for ticker in stock_list:
+            entry: PortfolioEntry = self.stocks.get(ticker, PortfolioEntry(stock= Stock(ticker))) 
+
             data = [0]
             if (market_data.get(data_key) is not None and market_data[data_key].get(ticker) is not None):
                 # convert the numpy array into a list of prices while removing NaN values
@@ -247,8 +211,11 @@ class Portfolio:
                     ~np.isnan(market_data[data_key][ticker].values)
                 ]
 
-            # TODO: upsert with 0 data for now but eventually market the entry in an error state
-            self._upsert_entry(ticker, data, TransactionType.MARKET_SYNC)
+            entry.process_transaction(ttype=TransactionType.MARKET_SYNC, data=data)
+            self.stocks[ticker] = entry
+        
+        # finally, rebalance
+        self.calc_value()
 
     def gen_graphs(self, independent_graphs, graph_width, graph_height, cfg_timezone):
         graphs = []
@@ -290,6 +257,8 @@ class Portfolio:
 @dataclass
 class ManagedState:
     portfolio: Portfolio
+
+    quit_sync: bool = False
     sync_thread: threading.Thread = None
 
 @dataclass
@@ -313,11 +282,14 @@ class PortfolioManager:
         return list(self.portfolio_states.keys())
 
     def load(self, name: str, filename: str):
+        config = configparser.ConfigParser()
+        config.read(filename)
+
         stocks_config = multiconfigparser.ConfigParserMultiOpt()
         stocks_config.read(filename)
 
         portfolio = Portfolio()
-        portfolio.load_from_config(stocks_config)
+        portfolio.load_from_config(config)
 
         self.portfolio_states[name] = ManagedState(portfolio, None)
 
@@ -337,7 +309,7 @@ class PortfolioManager:
     def _continuous_sync(self, pstate, time_period, time_interval, verbose):
         while True:
             try:
-                if (self._stop_workers == True):
+                if (self._stop_workers == True or pstate.quit_sync == True):
                     return
                 time.sleep(2)
                 pstate.portfolio.market_sync(time_period, time_interval, verbose)

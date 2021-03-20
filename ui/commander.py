@@ -156,7 +156,7 @@ class CommandParser:
             # remove the command part to supply true args to parser
             # There's no option to control verbosity to print usage info it will print by default
             args, unknown = self.parsers[cmd].parse_known_args(argument_list[1:])
-            args.cmd = cmd # for reference sake
+            args.cmd = CommandType(cmd) # for reference sake
             return CommandType(cmd), args
         except SystemExit:
             # I guess since this isn't neccessarily meant to be used in a program itself, test for the help command explicity

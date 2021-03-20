@@ -77,7 +77,7 @@ class Renderer(metaclass=utils.Singleton):
                 + str(
                     abs(
                         utils.round_value(
-                            gain / portfolio.cost_value * 100, self.mode, 2
+                            gain / portfolio.cost_value * 100 if portfolio.cost_value != 0 else 0, self.mode, 2
                         )
                     )
                 )
