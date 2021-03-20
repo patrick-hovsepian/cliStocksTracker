@@ -14,7 +14,7 @@ from enum import Enum
 from typing import List, Callable
 
 from .renderer import Renderer
-from portfolio import Portfolio, PortfolioManager
+from portfolio import Portfolio, PortfolioManager, TransactionType
 
 
 @dataclass
@@ -120,6 +120,11 @@ class CommandParser:
     def _generate_buy_sell_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="Buy or Sell Order", prog="buy | sell")
         parser.add_argument(
+            "name",
+            type=str,
+            help="portfolio name"
+        )
+        parser.add_argument(
             "stock",
             type=str,
             help="stock"
@@ -181,6 +186,7 @@ class CommandRunner:
         self.runners[CommandType.LOAD.value] = self._load_portfolio
         self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.manager.get_portfolio(args.name))
         self.runners[CommandType.MARKET_SYNC.value] = self._sync_portfolio
+        self.runners[CommandType.LIVE_TICKERS.value] = self._live_view
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
         self.runners[CommandType.SELL_STOCK.value] = self.runners[CommandType.BUY_STOCK.value]
         self.runners[CommandType.EXIT.value] = lambda *_: exit() 
@@ -192,8 +198,7 @@ class CommandRunner:
                 self.runners[c.value] = self._default_nop
 
     def _buy_sell_stock(self, args: argparse.Namespace):
-        print(f'Order Type: {args.cmd} Stock: {args.stock} Count: {args.count} Price: {args.price}')
-        return
+        args.manager.process_order(args.name, ttype=TransactionType(args.cmd.value), ticker=args.stock, count=args.count, price=args.price)
 
     def _load_portfolio(self, args: argparse.Namespace):
         portfolio = args.manager.get_portfolio(args.name)
@@ -205,6 +210,9 @@ class CommandRunner:
     
     def _sync_portfolio(self, args: argparse.Namespace):
         args.manager.sync(args.name, args.time_period, args.time_interval, args.continuous, args.verbose)
+
+    def _live_view(self, args: argparse.Namespace):
+        args.renderer.print_entries(args.manager.get_portfolio(args.name))
 
 @dataclass
 class Commander:

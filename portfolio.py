@@ -61,6 +61,7 @@ class PortfolioEntry:
         self.gains = 0
         self.gains_per_share = 0
 
+    # TODO track transactions so we can persist them
     def process_transaction(self, ttype: TransactionType, count: float = 0, pper_share: float = 0, data: list = (0)):
         if ttype is TransactionType.BUY:
             self.count += count
@@ -82,7 +83,7 @@ class PortfolioEntry:
 
 @dataclass
 class Portfolio:
-    stocks = {}
+    stocks = {} # entries TODO: rename
 
     # portfolio worth at market open
     open_market_value = 0
@@ -312,6 +313,17 @@ class PortfolioManager:
                 raise SystemExit
             except:
                 pass
+
+    def process_order(self, name: str, ttype: TransactionType, ticker: str, count: float, price: float):
+        portfolio: Portfolio = self.get_portfolio(name)
+        if (portfolio is None):
+            return
+        
+        entry: PortfolioEntry = portfolio.stocks.get(ticker, PortfolioEntry(stock= Stock(ticker)))
+        entry.process_transaction(ttype=ttype, count=count, pper_share=price)
+
+        portfolio.stocks[ticker] = entry
+        portfolio.calc_value()
 
 
 class Graph:
