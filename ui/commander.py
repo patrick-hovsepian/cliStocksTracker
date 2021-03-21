@@ -5,7 +5,6 @@ import os
 import sys
 import time
 import threading
-import multiconfigparser
 
 from colorama import Fore, Style
 from dataclasses import dataclass
@@ -23,8 +22,8 @@ class CommandType(Enum):
     HELP = "help"
     LOAD = "load"
     LIST = "list"
-    PRINT_PORTFOLIO_SUMMARY = "summary"
-    PRINT_PORTFOLIO_GRAPH = "graph"
+    SUMMARY = "summary"
+    GRAPH = "graph"
     LIVE_TICKERS = "live"
     BUY_STOCK = "buy"
     SELL_STOCK = "sell"
@@ -39,13 +38,16 @@ class CommandParser:
     parsers = {}
     _default_parser = argparse.ArgumentParser(description="Default No Arguments")
 
+    # TODO: create version of each command that can parse an ini file
+    # can have a amster config.ini that every command just looks for the relevant sections
     def __post_init__(self):
         self.parsers[CommandType.NONE.value] = self._default_parser
         self.parsers[CommandType.LOAD.value] = self._generate_load_parser()
         self.parsers[CommandType.MARKET_SYNC.value] = self._generate_sync_parser()
-        self.parsers[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = self._generate_portfolio_summary_parser()
+        self.parsers[CommandType.SUMMARY.value] = self._generate_portfolio_summary_parser()
         self.parsers[CommandType.BUY_STOCK.value] = self._generate_buy_sell_parser()
         self.parsers[CommandType.SELL_STOCK.value] = self.parsers[CommandType.BUY_STOCK.value]
+        self.parsers[CommandType.GRAPH.value] = self._generate_graph_parser()
 
         for c in CommandType:
             if (self.parsers.get(c.value) is None):
@@ -117,6 +119,45 @@ class CommandParser:
         )
         return parser
 
+    def _generate_graph_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(description="Graph Stock Data")
+        parser.add_argument(
+            "name",
+            type=str,
+            help="name of the portfolio to graph"
+        )
+        parser.add_argument(
+            "--independent-graphs",
+            help="independent graph per stock",
+            action="store_true",
+            default=False
+        )
+        parser.add_argument(
+            "--override",
+            type=str,
+            help="csv of stocks to graph",
+            default=""
+        )
+        parser.add_argument(
+            "--width",
+            type=int,
+            help="graph width",
+            default=80
+        )
+        parser.add_argument(
+            "--height",
+            type=int,
+            help="graph height",
+            default=20
+        )
+        parser.add_argument(
+            "--timezone",
+            type=str,
+            help="your timezone (exmple and default: America/New_York)",
+            default="America/New_York"
+        )
+        return parser
+
     def _generate_buy_sell_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="Buy or Sell Order", prog="buy | sell")
         parser.add_argument(
@@ -184,7 +225,8 @@ class CommandRunner:
         self.runners[CommandType.LIST.value] = lambda args: print(f'{Fore.YELLOW}Loaded Portfolios: {args.manager.get_portfolio_names()}{Style.RESET_ALL}')
         self.runners[CommandType.HELP.value] = lambda args: print(f'{Fore.YELLOW}Available Commands:\n{[cmd.value for cmd in CommandType if cmd.value is not None]}\nRun any of the following with the \'-h\' option for usage details{Style.RESET_ALL}')
         self.runners[CommandType.LOAD.value] = self._load_portfolio
-        self.runners[CommandType.PRINT_PORTFOLIO_SUMMARY.value] = lambda args: args.renderer.print_entries(args.manager.get_portfolio(args.name))
+        self.runners[CommandType.SUMMARY.value] = lambda args: args.renderer.print_entries(args.manager.get_portfolio(args.name))
+        self.runners[CommandType.GRAPH.value] = self._graph
         self.runners[CommandType.MARKET_SYNC.value] = self._sync_portfolio
         self.runners[CommandType.LIVE_TICKERS.value] = self._live_view
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
@@ -213,6 +255,16 @@ class CommandRunner:
 
     def _live_view(self, args: argparse.Namespace):
         args.renderer.print_entries(args.manager.get_portfolio(args.name))
+
+    def _graph(self, args: argparse.Namespace):
+        graphs = args.manager.graph(name=args.name, 
+            independent_graphs=args.independent_graphs, 
+            graph_width=args.width, 
+            graph_height=args.height, 
+            cfg_timezone=args.timezone, 
+            override_stocks=args.override.split(","))
+        args.renderer.print_graphs(graphs)
+        return
 
 @dataclass
 class Commander:

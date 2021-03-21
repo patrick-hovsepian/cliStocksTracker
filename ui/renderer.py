@@ -149,7 +149,7 @@ class Renderer(metaclass=utils.Singleton):
 
         return
 
-    def print_graphs(self, portfolio: portfolio.Portfolio):
-        for graph in portfolio.graphs:
+    def print_graphs(self, graphs: list):
+        for graph in graphs:
             graph.draw()
         return
