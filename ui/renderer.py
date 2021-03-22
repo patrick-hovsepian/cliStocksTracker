@@ -153,3 +153,36 @@ class Renderer(metaclass=utils.Singleton):
         for graph in graphs:
             graph.draw()
         return
+
+    # TODO: this should just reuse the existing print_entries method
+    def print_tickers(self, portfolio: portfolio.Portfolio, print_cols = list(_stock_column_formatters.keys())):
+        up_arrow_code = '\033[A'
+        complete_line = ''
+
+        # print the heading
+        heading = "\n\t"
+        divider = "\t"
+        for col in print_cols:
+            column = _stock_column_formatters.get(col) or _portfolio_column_formatters.get(col)
+            heading += ("{:" + str(column.width) + "}").format(column.header)
+            divider += "-" * column.width
+        complete_line += f'{heading}\n{divider}'
+        end = f'{up_arrow_code}{up_arrow_code}'
+
+        # now print every portfolio entry
+        for i, entry in enumerate(portfolio.stocks.values()):
+            stock = entry.stock
+
+            complete_line += '\n\t'
+            complete_line += Back.LIGHTBLACK_EX if i % 2 == 0 else Back.RESET
+
+            for i, col in enumerate(print_cols):
+                col_formatter = _stock_column_formatters.get(col) 
+                cell_data = col_formatter.generator(stock)
+                complete_line += cell_data.color + ("{:" + str(col_formatter.width) + "}").format(cell_data.value)
+
+            # print the entry
+            complete_line += Style.RESET_ALL
+            end += up_arrow_code
+        
+        print(complete_line, flush= True, end= f'\r{end}')

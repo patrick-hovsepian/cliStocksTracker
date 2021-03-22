@@ -48,6 +48,7 @@ class CommandParser:
         self.parsers[CommandType.BUY_STOCK.value] = self._generate_buy_sell_parser()
         self.parsers[CommandType.SELL_STOCK.value] = self.parsers[CommandType.BUY_STOCK.value]
         self.parsers[CommandType.GRAPH.value] = self._generate_graph_parser()
+        self.parsers[CommandType.LIVE_TICKERS.value] = self._generate_live_parser()
 
         for c in CommandType:
             if (self.parsers.get(c.value) is None):
@@ -182,6 +183,15 @@ class CommandParser:
         )
         return parser
 
+    def _generate_live_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(description="Live Ticker View")
+        parser.add_argument(
+            "name",
+            type=str,
+            help="portfolio name"
+        )
+        return parser
+
     def parse_command(self, raw_cmd: str) -> (CommandType, argparse.Namespace):
         if (len(raw_cmd) == 0):
             print(f'{Fore.RED}Please specify a command - Allowed Commands:\n{list(self.parsers.keys())}{Style.RESET_ALL}')
@@ -254,7 +264,13 @@ class CommandRunner:
         args.manager.sync(args.name, args.time_period, args.time_interval, args.continuous, args.verbose)
 
     def _live_view(self, args: argparse.Namespace):
-        args.renderer.print_entries(args.manager.get_portfolio(args.name))
+        # force sync mode so we can view ticker data "live"
+        args.manager.sync(args.name, "1d", "1m", True, False)
+
+        print(f'Press Ctrl + C to stop viewing')
+        while True:
+            args.renderer.print_tickers(args.manager.get_portfolio(args.name))
+            time.sleep(5)
 
     def _graph(self, args: argparse.Namespace):
         graphs = args.manager.graph(name=args.name, 
@@ -268,7 +284,7 @@ class CommandRunner:
 
 @dataclass
 class Commander:
-    renderer: Renderer    
+    renderer: Renderer
 
     def __post_init__(self):
         self.master_parser = CommandParser()
@@ -300,7 +316,12 @@ class Commander:
         except SystemExit as err:
             # expected as a result of the exit() python command, just re-raise
             self.manager.cleanup()
+            self.master_runner.runners[CommandType.CLEAR.value]()
             raise SystemExit
+        except KeyboardInterrupt:
+            if (curr_command is CommandType.LIVE_TICKERS):
+                self.master_runner.runners[CommandType.CLEAR.value]()
+                return
         except:
             e_type, e_value, e_trace = sys.exc_info()
             e_value = e_value if e_value is not None else "Unknown error"

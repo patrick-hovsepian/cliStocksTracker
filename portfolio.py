@@ -236,7 +236,7 @@ class PortfolioManager:
             try:
                 if (self._stop_workers == True or pstate.quit_sync == True):
                     return
-                time.sleep(2)
+                time.sleep(5)
                 pstate.portfolio.market_sync(time_period, time_interval, verbose)
             except SystemExit as err:
                 raise SystemExit
