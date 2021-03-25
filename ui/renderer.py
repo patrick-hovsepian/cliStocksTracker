@@ -40,7 +40,7 @@ _stock_column_formatters = {
     "Ticker" : ColumnFormatter("Ticker", 9, lambda stock: CellData(stock.symbol)),
     "Current Price" : ColumnFormatter("Last", 12, lambda stock: CellData(format_number(stock.curr_value))),
     "Daily Change Amount": ColumnFormatter("Chg", 12, lambda stock: CellData(format_gl(stock.change_amount), Fore.GREEN if stock.change_amount >= 0 else Fore.RED)),
-    "Daily Change Percentage": ColumnFormatter("Chg%", 10, lambda stock: CellData(format_gl(stock.change_percentage, Fore.GREEN if stock.change_percentage >= 0 else Fore.RED))),
+    "Daily Change Percentage": ColumnFormatter("Chg%", 10, lambda stock: CellData(format_gl(stock.change_percentage, False), Fore.GREEN if stock.change_percentage >= 0 else Fore.RED)),
     "Low": ColumnFormatter("Low", 12, lambda stock: CellData(format_number(stock.low))),
     "High": ColumnFormatter("High", 12, lambda stock: CellData(format_number(stock.high))),
     "Daily Average Price": ColumnFormatter("Avg", 12, lambda stock: CellData(format_number(stock.average))),
@@ -53,6 +53,22 @@ _portfolio_column_formatters = {
     "Average Buy Price": ColumnFormatter("Buy", 12, lambda entry: CellData(format_number(entry.average_cost), Fore.GREEN if entry.average_cost <= entry.stock.curr_value else Fore.RED)),
     "Total Share Gains": ColumnFormatter("G/L/T", 12, lambda entry: CellData(format_gl(entry.gains), Fore.GREEN if entry.gains >= 0 else Fore.RED)),
     "Total Share Cost": ColumnFormatter("Cost", 12, lambda entry: CellData(format_number(entry.cost_basis))),
+}
+
+_ticker_column_formatters = {
+    "Ticker" : ColumnFormatter("Ticker", 12, lambda info: CellData(info.get("symbol"))),
+    "Current Price" : ColumnFormatter("Last", 12, lambda info: CellData(format_number(info.get("regularMarketPrice")))),
+    "Bid Ask": ColumnFormatter("Bid/Ask", 20, lambda info: CellData(format_number(info.get("bid")) + "/" + format_number(info.get("ask")))),
+    "200 Day Average" : ColumnFormatter("200D Avg", 12, lambda info: CellData(format_number(info.get("twoHundredDayAverage")))),
+    #"Daily Change Percentage": ColumnFormatter("Chg%", 10, lambda info: CellData(format_number(info.get("")))),
+    #"Daily Change Amount": ColumnFormatter("Chg", 12, lambda info: CellData(format_number(info.get("regularMarketPrice")))),
+    #"Daily Change Percentage": ColumnFormatter("Chg%", 10, lambda info: CellData(format_number(info.get("")))),
+    "Low": ColumnFormatter("Low", 12, lambda info: CellData(format_number(info.get("regularMarketDayLow")))),
+    "High": ColumnFormatter("High", 12, lambda info: CellData(format_number(info.get("regularMarketDayHigh")))),
+    #"Daily Average Price": ColumnFormatter("Avg", 12, lambda info: CellData(format_number(info.get("")))),
+    "52 Week High": ColumnFormatter("52 wk High", 12, lambda info: CellData(format_number(info.get("fiftyTwoWeekHigh")))),
+    "Volume": ColumnFormatter("Avg Vol", 12, lambda info: CellData(format_number(info.get("averageVolume")))),
+    "10 Day Volume": ColumnFormatter("10 Day Vol", 12, lambda info: CellData(format_number(info.get("averageDailyVolume10Day")))),
 }
 
 # require portfolio passed in
@@ -185,4 +201,22 @@ class Renderer(metaclass=utils.Singleton):
             complete_line += Style.RESET_ALL
             end += up_arrow_code
         
+        complete_line += "\n"
         print(complete_line, flush= True, end= f'\r{end}')
+
+    def print_single_ticker(self, ticker):
+        line = "\n"
+        
+        for i, col_formatter in enumerate(_ticker_column_formatters.values()):
+            if (col_formatter is None):
+                continue
+
+            cell_data = col_formatter.generator(ticker.info)
+            line += f'{col_formatter.header}: '
+            line += cell_data.color + ("{:" + str(col_formatter.width) + "}").format(cell_data.value)
+            line += Style.RESET_ALL
+
+            if ((i + 1) % 3 == 0):
+                line += "\n"
+
+        print(line, flush = True)

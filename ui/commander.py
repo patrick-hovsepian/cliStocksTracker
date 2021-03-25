@@ -297,7 +297,9 @@ class CommandRunner:
 
     def _ticker(self, args: argparse.Namespace):
         t = Ticker(args.symbol)
-        
+        args.renderer.print_single_ticker(t)
+
+        """
         points = [ 
             "regularMarketPrice",
             "bid",
@@ -314,6 +316,7 @@ class CommandRunner:
         for key in points:
             data = t.info.get(key)
             print(f'{key}: {data}')
+        """
 
 @dataclass
 class Commander:
