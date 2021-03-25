@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Callable
+from yfinance import Ticker, Tickers
 
 from .renderer import Renderer
 from portfolio import Portfolio, PortfolioManager, TransactionType
@@ -28,6 +29,7 @@ class CommandType(Enum):
     BUY_STOCK = "buy"
     SELL_STOCK = "sell"
     MARKET_SYNC = "sync"
+    TICKER = "ticker"
     CLEAR = "clear"
     EXIT = "exit"
 
@@ -49,6 +51,7 @@ class CommandParser:
         self.parsers[CommandType.SELL_STOCK.value] = self.parsers[CommandType.BUY_STOCK.value]
         self.parsers[CommandType.GRAPH.value] = self._generate_graph_parser()
         self.parsers[CommandType.LIVE_TICKERS.value] = self._generate_live_parser()
+        self.parsers[CommandType.TICKER.value] = self._generate_ticker_parser()
 
         for c in CommandType:
             if (self.parsers.get(c.value) is None):
@@ -192,6 +195,15 @@ class CommandParser:
         )
         return parser
 
+    def _generate_ticker_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(description="Ticker View")
+        parser.add_argument(
+            "symbol",
+            type=str,
+            help="symbol to load"
+        )
+        return parser
+
     def parse_command(self, raw_cmd: str) -> (CommandType, argparse.Namespace):
         if (len(raw_cmd) == 0):
             print(f'{Fore.RED}Please specify a command - Allowed Commands:\n{list(self.parsers.keys())}{Style.RESET_ALL}')
@@ -239,6 +251,7 @@ class CommandRunner:
         self.runners[CommandType.GRAPH.value] = self._graph
         self.runners[CommandType.MARKET_SYNC.value] = self._sync_portfolio
         self.runners[CommandType.LIVE_TICKERS.value] = self._live_view
+        self.runners[CommandType.TICKER.value] = self._ticker
         self.runners[CommandType.BUY_STOCK.value] = self._buy_sell_stock
         self.runners[CommandType.SELL_STOCK.value] = self.runners[CommandType.BUY_STOCK.value]
         self.runners[CommandType.EXIT.value] = lambda *_: exit() 
@@ -270,7 +283,7 @@ class CommandRunner:
         print(f'Press Ctrl + C to stop viewing')
         while True:
             args.renderer.print_tickers(args.manager.get_portfolio(args.name))
-            time.sleep(5)
+            time.sleep(61)
 
     def _graph(self, args: argparse.Namespace):
         graphs = args.manager.graph(name=args.name, 
@@ -281,6 +294,26 @@ class CommandRunner:
             override_stocks=args.override.split(","))
         args.renderer.print_graphs(graphs)
         return
+
+    def _ticker(self, args: argparse.Namespace):
+        t = Ticker(args.symbol)
+        
+        points = [ 
+            "regularMarketPrice",
+            "bid",
+            "ask",
+            "regularMarketPreviousClose",
+            "regularMarketOpen",            
+            "regularMarketDayLow",
+            "regularMarketDayHigh",
+            "twoHundredDayAverage",
+            "fiftyTwoWeekHigh",
+            "averageVolume",
+            "averageDailyVolume10Day",
+            "exchange" ]
+        for key in points:
+            data = t.info.get(key)
+            print(f'{key}: {data}')
 
 @dataclass
 class Commander:

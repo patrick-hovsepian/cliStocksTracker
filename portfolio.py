@@ -82,13 +82,15 @@ class PortfolioEntry:
 
 @dataclass
 class Portfolio:
-    stocks = {} # entries TODO: rename
 
-    # portfolio worth at market open
-    open_market_value = 0
-    # amount invested into the portfolio (sum of cost of share cost)
-    cost_value = 0
-    market_value = 0
+    def __post_init__(self):
+        self.stocks = {} # entries TODO: rename
+
+        # portfolio worth at market open
+        self.open_market_value = 0
+        # amount invested into the portfolio (sum of cost of share cost)
+        self.cost_value = 0
+        self.market_value = 0
 
     def calc_value(self):
         self.open_market_value = 0
@@ -236,7 +238,7 @@ class PortfolioManager:
             try:
                 if (self._stop_workers == True or pstate.quit_sync == True):
                     return
-                time.sleep(5)
+                time.sleep(60)
                 pstate.portfolio.market_sync(time_period, time_interval, verbose)
             except SystemExit as err:
                 raise SystemExit
